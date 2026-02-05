@@ -1,13 +1,13 @@
 import { supabase } from './supabaseClient'; // Certifique-se que o caminho está certo
 import React, { useState, useReducer, useEffect, useRef } from 'react';
 import { 
-  AlertTriangle, Zap, Search, History, 
+  AlertTriangle, Zap, History, 
   XCircle, RotateCcw, Swords, FileText, ChevronRight, Gavel,
-  Layers, MousePointerClick, Check, ShieldAlert,
-  Flame, Droplets, Leaf, Eye, Moon, Star, Hexagon, Component, Heart, Scale,
-  HeartPulse, Sparkles, MessageSquare, Bot, ArrowUpCircle, Info, ScanLine, Edit3, X,
+  Layers, Check,
+  Flame, Droplets, Leaf, Eye, Moon, Star, Hexagon, Component, Heart,
+  Sparkles, ArrowUpCircle, X,
   Plus, Minus, RefreshCw, PanelLeftClose, PanelLeft, UserCheck, Trophy, RotateCcw as RestartIcon, Trash2,
-  Lightbulb, Send, Target, BarChart3, User, BookOpen, PlayCircle, Download, Coins, Skull, Briefcase
+  Lightbulb, Send, Target, BarChart3, User, BookOpen, PlayCircle, Download, Coins, Skull, Briefcase, Menu
 } from 'lucide-react';
 
 // --- SISTEMA DE ÁUDIO ---
