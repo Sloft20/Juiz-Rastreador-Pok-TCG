@@ -1,11 +1,10 @@
-import { supabase } from './supabaseClient'; // Certifique-se que o caminho está certo
 import React, { useState, useReducer, useEffect, useRef } from 'react';
 import { 
-  AlertTriangle, Zap, History, 
+  AlertTriangle, Zap, Search, History, 
   XCircle, RotateCcw, Swords, FileText, ChevronRight, Gavel,
-  Layers, Check,
-  Flame, Droplets, Leaf, Eye, Moon, Star, Hexagon, Component, Heart,
-  Sparkles, ArrowUpCircle, X,
+  Layers, MousePointerClick, Check, ShieldAlert,
+  Flame, Droplets, Leaf, Eye, Moon, Star, Hexagon, Component, Heart, Scale,
+  HeartPulse, Sparkles, MessageSquare, Bot, ArrowUpCircle, Info, ScanLine, Edit3, X,
   Plus, Minus, RefreshCw, PanelLeftClose, PanelLeft, UserCheck, Trophy, RotateCcw as RestartIcon, Trash2,
   Lightbulb, Send, Target, BarChart3, User, BookOpen, PlayCircle, Download, Coins, Skull, Briefcase, Menu
 } from 'lucide-react';
@@ -13,12 +12,12 @@ import {
 // --- SISTEMA DE ÁUDIO ---
 const playSound = (type: 'attack' | 'damage' | 'energy' | 'click' | 'knockout' | 'coin', customVolume = 0.4, speed = 1.0) => {
   const sounds = {
-    attack: 'sounds/attack.mp3',
-    damage: 'sounds/damage.mp3',
-    energy: 'sounds/energy.mp3',
-    click: 'sounds/click.mp3',
-    knockout: 'sounds/knockout.mp3',
-    coin: 'sounds/coin.mp3', 
+    attack: '/sounds/attack.mp3',
+    damage: '/sounds/damage.mp3',
+    energy: '/sounds/energy.mp3',
+    click: '/sounds/click.mp3',
+    knockout: '/sounds/knockout.mp3',
+    coin: '/sounds/coin.mp3', 
   };
 
   const soundPath = sounds[type];
@@ -27,6 +26,7 @@ const playSound = (type: 'attack' | 'damage' | 'energy' | 'click' | 'knockout' |
   const audio = new Audio(soundPath);
   audio.volume = customVolume;
   audio.playbackRate = speed;
+  // @ts-ignore
   audio.preservesPitch = false; 
 
   audio.play().catch((err) => {});
@@ -662,81 +662,54 @@ const WinnerModal = ({ winnerName, onRestart }: { winnerName: string, onRestart:
 );
 
 const RankingModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
-    const [stats, setStats] = useState<any[]>([]);
+    const [deckStats, setDeckStats] = useState<DeckStat[]>([]);
+    const [playerStats, setPlayerStats] = useState<PlayerStat[]>([]);
     const [activeTab, setActiveTab] = useState<'decks' | 'players'>('decks');
-
-    // Busca dados iniciais
-    const fetchRanking = async () => {
-        const { data } = await supabase.from('ranking').select('*');
-        if (data) setStats(data);
-    };
-
     useEffect(() => {
         if (isOpen) {
-            fetchRanking();
-
-            // INSCRIÇÃO EM TEMPO REAL (Magia do Supabase)
-            const channel = supabase
-                .channel('ranking_updates')
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'ranking' }, (payload) => {
-                    fetchRanking(); // Recarrega se alguém ganhar uma partida em outro lugar
-                })
-                .subscribe();
-
-            return () => { supabase.removeChannel(channel); };
+            const savedDecks = localStorage.getItem('judgeTech_ranking');
+            const savedPlayers = localStorage.getItem('judgeTech_player_ranking');
+            if (savedDecks) setDeckStats(JSON.parse(savedDecks));
+            else setDeckStats([{ deckId: 'charizard-ex', deckName: 'Charizard ex', wins: 0, matches: 0 }, { deckId: 'gardevoir-ex', deckName: 'Gardevoir ex', wins: 0, matches: 0 }, { deckId: 'dragapult-ex', deckName: 'Dragapult ex', wins: 0, matches: 0 }]);
+            if (savedPlayers) setPlayerStats(JSON.parse(savedPlayers));
         }
     }, [isOpen]);
-
-    // Processa os dados brutos para separar por Deck ou Player
-    const getProcessedStats = () => {
-        if (activeTab === 'decks') {
-            // Agrupa por nome do deck
-            const deckMap: Record<string, { wins: number, matches: number }> = {};
-            stats.forEach(row => {
-                if (!deckMap[row.deck_name]) deckMap[row.deck_name] = { wins: 0, matches: 0 };
-                deckMap[row.deck_name].wins += row.wins;
-                deckMap[row.deck_name].matches += row.matches;
-            });
-            return Object.entries(deckMap).map(([name, val]) => ({ name, ...val }));
-        } else {
-            // Agrupa por nome do jogador
-            const playerMap: Record<string, { wins: number, matches: number }> = {};
-            stats.forEach(row => {
-                if (!playerMap[row.player_name]) playerMap[row.player_name] = { wins: 0, matches: 0 };
-                playerMap[row.player_name].wins += row.wins;
-                playerMap[row.player_name].matches += row.matches;
-            });
-            return Object.entries(playerMap).map(([name, val]) => ({ name, ...val }));
-        }
-    };
-
-    const displayData = getProcessedStats().sort((a, b) => (b.wins / (b.matches || 1)) - (a.wins / (a.matches || 1)));
-
     if (!isOpen) return null;
-
     return (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
             <div className="bg-slate-900 border border-yellow-500/50 p-6 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] flex flex-col">
                 <div className="flex justify-between items-center mb-6 border-b border-slate-700 pb-4">
-                    <h3 className="text-2xl font-bold text-white flex items-center gap-2"><Trophy className="text-yellow-400" /> Ranking Global (Online)</h3>
+                    <h3 className="text-2xl font-bold text-white flex items-center gap-2"><Trophy className="text-yellow-400" /> Ranking Global</h3>
                     <button onClick={onClose}><XCircle className="text-slate-500 hover:text-white" /></button>
                 </div>
                 <div className="flex gap-2 mb-4">
                     <button onClick={() => setActiveTab('decks')} className={`px-4 py-2 rounded-lg font-bold transition-colors ${activeTab === 'decks' ? 'bg-yellow-500 text-black' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>Decks</button>
                     <button onClick={() => setActiveTab('players')} className={`px-4 py-2 rounded-lg font-bold transition-colors ${activeTab === 'players' ? 'bg-blue-500 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>Jogadores</button>
                 </div>
-                <div className="overflow-hidden rounded-lg border border-slate-700 overflow-y-auto custom-scrollbar">
+                <div className="overflow-hidden rounded-lg border border-slate-700">
                     <table className="w-full text-left text-sm text-slate-300">
-                        <thead className="bg-slate-800 text-xs uppercase text-slate-400 font-bold"><tr><th className="px-4 py-3">Nome</th><th className="px-4 py-3 text-center">Partidas</th><th className="px-4 py-3 text-center">Vitórias</th><th className="px-4 py-3 text-right">Winrate</th></tr></thead>
+                        <thead className="bg-slate-800 text-xs uppercase text-slate-400 font-bold"><tr><th className="px-4 py-3">{activeTab === 'decks' ? 'Deck' : 'Jogador'}</th><th className="px-4 py-3 text-center">Partidas</th><th className="px-4 py-3 text-center">Vitórias</th><th className="px-4 py-3 text-right">Winrate</th></tr></thead>
                         <tbody className="divide-y divide-slate-700">
-                            {displayData.map((stat) => (
-                                <tr key={stat.name} className="hover:bg-slate-800/50 transition-colors">
-                                    <td className="px-4 py-3 font-bold text-white">{stat.name}</td>
-                                    <td className="px-4 py-3 text-center">{stat.matches}</td>
-                                    <td className="px-4 py-3 text-center text-green-400">{stat.wins}</td>
-                                    <td className="px-4 py-3 text-right font-mono font-bold text-yellow-500">{stat.matches > 0 ? ((stat.wins / stat.matches) * 100).toFixed(1) : 0}%</td>
-                                </tr>
-                            ))}
+                            {activeTab === 'decks' ? (
+                                deckStats.sort((a,b) => (b.wins/(b.matches||1)) - (a.wins/(a.matches||1))).map((stat) => (
+                                    <tr key={stat.deckId} className="hover:bg-slate-800/50 transition-colors">
+                                        <td className="px-4 py-3 font-bold text-white">{stat.deckName}</td>
+                                        <td className="px-4 py-3 text-center">{stat.matches}</td>
+                                        <td className="px-4 py-3 text-center text-green-400">{stat.wins}</td>
+                                        <td className="px-4 py-3 text-right font-mono font-bold text-yellow-500">{stat.matches > 0 ? ((stat.wins / stat.matches) * 100).toFixed(1) : 0}%</td>
+                                    </tr>
+                                ))
+                            ) : (
+                                playerStats.length === 0 ? <tr><td colSpan={4} className="p-4 text-center text-slate-500">Sem dados de jogadores ainda.</td></tr> :
+                                playerStats.sort((a,b) => (b.wins/(b.matches||1)) - (a.wins/(a.matches||1))).map((stat, idx) => (
+                                    <tr key={idx} className="hover:bg-slate-800/50 transition-colors">
+                                        <td className="px-4 py-3 font-bold text-white flex items-center gap-2"><User size={14}/> {stat.playerName}</td>
+                                        <td className="px-4 py-3 text-center">{stat.matches}</td>
+                                        <td className="px-4 py-3 text-center text-green-400">{stat.wins}</td>
+                                        <td className="px-4 py-3 text-right font-mono font-bold text-blue-400">{stat.matches > 0 ? ((stat.wins / stat.matches) * 100).toFixed(1) : 0}%</td>
+                                    </tr>
+                                ))
+                            )}
                         </tbody>
                     </table>
                 </div>
@@ -939,7 +912,7 @@ const CardSlot = ({ pokemon, theme, isOpponent, isActive, interactionMode, onInt
 const PlayerPanel = ({ player, isCurrentTurn, isOpponent, interactionMode, onCardClick, onOpenSelector, onOpenDetails }: any) => {
   const bgGradient = player.deckTheme ? `bg-gradient-to-r ${player.deckTheme.gradient}` : 'bg-slate-800';
   return (
-    <div className={`flex flex-col ${isOpponent ? 'justify-end pb-2 md:pb-4' : 'justify-start pt-2 md:pt-4'} h-full relative`}>
+    <div className={`flex flex-col ${isOpponent ? 'justify-end pb-2 md:pb-4' : 'justify-start pt-2 md:pt-4'} h-full relative w-full max-w-4xl`}>
       <div className={`absolute inset-x-0 ${isOpponent ? 'top-0 h-2' : 'bottom-0 h-2'} ${bgGradient} opacity-50`}></div>
       <div className={`flex gap-2 md:gap-3 overflow-x-auto no-scrollbar px-4 ${isOpponent ? 'order-1 opacity-80 scale-90 origin-bottom' : 'order-2 mt-2 md:mt-4'} ${isOpponent ? 'items-end' : 'items-start'}`}>
         {player.bench.map((poke: any, i: number) => (
@@ -1041,7 +1014,63 @@ interface MatchHistoryRecord {
     events: GameEvent[];
 }
 
+const HistoryModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
+    const [history, setHistory] = useState<MatchHistoryRecord[]>([]);
+    const [selectedMatch, setSelectedMatch] = useState<MatchHistoryRecord | null>(null);
 
+    useEffect(() => {
+        if (isOpen) {
+            const saved = localStorage.getItem('judgeTech_match_history');
+            if (saved) setHistory(JSON.parse(saved));
+        }
+    }, [isOpen]);
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+            <div className="bg-slate-900 border border-slate-700 p-6 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[80vh] flex flex-col">
+                <div className="flex justify-between items-center mb-6 border-b border-slate-700 pb-4">
+                    <h3 className="text-2xl font-bold text-white flex items-center gap-2"><History className="text-blue-400" /> Histórico de Partidas</h3>
+                    <button onClick={onClose}><XCircle className="text-slate-500 hover:text-white" /></button>
+                </div>
+                
+                <div className="flex gap-4 flex-1 overflow-hidden">
+                    {/* Lista de Partidas */}
+                    <div className={`${selectedMatch ? 'w-1/3 hidden md:block' : 'w-full'} overflow-y-auto custom-scrollbar space-y-3`}>
+                        {history.length === 0 ? <p className="text-slate-500 text-center">Nenhuma partida salva.</p> : 
+                            history.map((match) => (
+                                <div key={match.id} onClick={() => setSelectedMatch(match)} className={`p-4 rounded-xl border cursor-pointer transition-all ${selectedMatch?.id === match.id ? 'bg-slate-800 border-blue-500' : 'bg-slate-900 border-slate-700 hover:bg-slate-800'}`}>
+                                    <div className="flex justify-between text-xs text-slate-500 mb-2"><span>{match.date}</span></div>
+                                    <div className="flex justify-between items-center">
+                                        <div className="text-sm font-bold text-white">{match.winner} venceu!</div>
+                                        <ChevronRight size={16} className="text-slate-500"/>
+                                    </div>
+                                    <div className="mt-2 text-xs text-slate-400">
+                                        {match.p1Name} ({match.p1Deck}) vs {match.p2Name} ({match.p2Deck})
+                                    </div>
+                                </div>
+                            ))
+                        }
+                    </div>
+
+                    {/* Detalhes do Log */}
+                    {selectedMatch && (
+                        <div className="flex-1 bg-slate-950 rounded-xl border border-slate-800 p-4 flex flex-col">
+                            <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-800">
+                                <h4 className="font-bold text-white">Log da Partida</h4>
+                                <button onClick={() => setSelectedMatch(null)} className="md:hidden text-slate-400">Voltar</button>
+                            </div>
+                            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-1">
+                                {selectedMatch.events.map((evt) => <TimelineItem key={evt.id} evt={evt} />)}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
 
 export default function App() {
   const [state, dispatch] = useReducer(gameReducer, getInitialState());
@@ -1064,23 +1093,25 @@ export default function App() {
   const opponentId = state.currentPlayer === 'P1' ? 'P2' : 'P1';
 
   // --- LÓGICA DE HISTÓRICO ADICIONADA ---
-  // --- LÓGICA DE HISTÓRICO E RANKING (SUPABASE) ---
   useEffect(() => {
       if (state.winner) {
           const winnerDeck = state.players[state.winner].deckTheme;
           const winnerName = state.players[state.winner].name;
-
           if (winnerDeck) {
-              // 1. Atualiza Ranking Global no Supabase (usando a função segura do SQL)
-              supabase.rpc('register_win', { 
-                  p_deck: winnerDeck.name, 
-                  p_player: winnerName 
-              }).then(({ error }) => {
-                  if (error) console.error("Erro ao salvar ranking:", error);
-              });
+              // 1. Atualiza Ranking
+              const savedDecks = localStorage.getItem('judgeTech_ranking');
+              let deckStats: DeckStat[] = savedDecks ? JSON.parse(savedDecks) : [];
+              const dIdx = deckStats.findIndex(s => s.deckId === winnerDeck.id);
+              if (dIdx >= 0) { deckStats[dIdx].wins += 1; deckStats[dIdx].matches += 1; } else { deckStats.push({ deckId: winnerDeck.id, deckName: winnerDeck.name, wins: 1, matches: 1 }); }
+              localStorage.setItem('judgeTech_ranking', JSON.stringify(deckStats));
 
-              // 2. O Histórico de Partidas detalhado pode continuar local ou ir para outra tabela
-              // Por simplicidade, mantive o histórico de logs local, mas o ranking agora é Global.
+              const savedPlayers = localStorage.getItem('judgeTech_player_ranking');
+              let playerStats: PlayerStat[] = savedPlayers ? JSON.parse(savedPlayers) : [];
+              const pIdx = playerStats.findIndex(p => p.playerName === winnerName);
+              if (pIdx >= 0) { playerStats[pIdx].wins += 1; playerStats[pIdx].matches += 1; } else { playerStats.push({ playerName: winnerName, wins: 1, matches: 1 }); }
+              localStorage.setItem('judgeTech_player_ranking', JSON.stringify(playerStats));
+
+              // 2. SALVA O HISTÓRICO DA PARTIDA
               const matchRecord: MatchHistoryRecord = {
                   id: state.matchId,
                   date: new Date().toLocaleString(),
@@ -1093,7 +1124,7 @@ export default function App() {
               };
               const existingHistory = localStorage.getItem('judgeTech_match_history');
               const historyList: MatchHistoryRecord[] = existingHistory ? JSON.parse(existingHistory) : [];
-              historyList.unshift(matchRecord); 
+              historyList.unshift(matchRecord); // Adiciona no topo
               localStorage.setItem('judgeTech_match_history', JSON.stringify(historyList));
           }
       }
@@ -1230,9 +1261,9 @@ export default function App() {
              </div>
         </div>
 
-        {/* AREA DO JOGO */}
-        <div className="flex-1 flex flex-col p-2 md:p-8 gap-2 md:gap-8 overflow-hidden">
-            <div className="flex-1 flex flex-col items-center justify-end md:justify-center bg-red-500/5 rounded-2xl md:rounded-3xl border border-red-500/10 relative pb-2">
+        {/* AREA DO JOGO - ALINHAMENTO CENTRAL */}
+        <div className="flex-1 flex flex-col items-center justify-center p-2 md:p-4 gap-4 overflow-hidden w-full">
+            <div className="w-full max-w-4xl flex-1 flex flex-col items-center justify-end bg-red-500/5 rounded-2xl md:rounded-3xl border border-red-500/10 relative pb-2">
                 <PlayerPanel 
                     player={state.currentPlayer === 'P1' ? state.players.P2 : state.players.P1} 
                     isCurrentTurn={false} isOpponent={true} 
@@ -1242,7 +1273,7 @@ export default function App() {
                     onOpenDetails={(t: any, i: any, pid: any) => setDetailsTarget({ target: t, index: i, playerId: pid })}
                 />
             </div>
-            <div className="flex-1 flex flex-col items-center justify-start md:justify-center bg-blue-500/5 rounded-2xl md:rounded-3xl border border-blue-500/10 relative pt-2">
+            <div className="w-full max-w-4xl flex-1 flex flex-col items-center justify-start bg-blue-500/5 rounded-2xl md:rounded-3xl border border-blue-500/10 relative pt-2">
                  <PlayerPanel 
                     player={activePlayer} 
                     isCurrentTurn={true} isOpponent={false} 
