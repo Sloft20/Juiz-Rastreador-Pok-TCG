@@ -1,15 +1,13 @@
 import React, { useState, useReducer, useEffect, useRef } from 'react';
 import { 
-  AlertTriangle, Zap, History, 
+  AlertTriangle, Zap, Search, History, 
   XCircle, RotateCcw, Swords, FileText, ChevronRight, Gavel,
-  Layers, Check,
-  Flame, Droplets, Leaf, Eye, Moon, Star, Hexagon, Component, Heart,
-  Sparkles, ArrowUpCircle, X,
+  Layers, MousePointerClick, Check, ShieldAlert,
+  Flame, Droplets, Leaf, Eye, Moon, Star, Hexagon, Component, Heart, Scale,
+  HeartPulse, Sparkles, MessageSquare, Bot, ArrowUpCircle, Info, ScanLine, Edit3, X,
   Plus, Minus, RefreshCw, PanelLeftClose, PanelLeft, UserCheck, Trophy, RotateCcw as RestartIcon, Trash2,
   Lightbulb, Send, Target, BarChart3, User, BookOpen, PlayCircle, Download, Coins, Skull, Briefcase, Menu
 } from 'lucide-react';
-// Se você configurou o Supabase, descomente a linha abaixo. Caso contrário, o Ranking será local.
-// import { supabase } from './supabaseClient';
 
 // --- SISTEMA DE ÁUDIO ---
 const playSound = (type: 'attack' | 'damage' | 'energy' | 'click' | 'knockout' | 'coin', customVolume = 0.4, speed = 1.0) => {
@@ -95,6 +93,14 @@ interface MatchHistoryRecord {
     events: GameEvent[];
 }
 
+// Tipagem específica para o estado de confirmação de ataque
+interface AttackConfirmState {
+    attack: any;
+    attacker: any;
+    defender: any;
+    prizesDiff: number;
+}
+
 // --- DADOS ---
 const ENERGY_CONFIG: Record<EnergyType, { color: string, bg: string, icon: React.ElementType, label: string }> = {
   GRASS: { color: 'text-green-600', bg: 'bg-green-600', icon: Leaf, label: 'Grama' },
@@ -110,6 +116,7 @@ const ENERGY_CONFIG: Record<EnergyType, { color: string, bg: string, icon: React
   COLORLESS: { color: 'text-slate-500', bg: 'bg-slate-200', icon: Star, label: 'Incolor' },
 };
 
+// --- FERRAMENTAS ---
 const TOOLS_DATABASE: Record<string, Tool> = {
     "Cinto da Bravura": { name: "Cinto da Bravura", type: 'TOOL', effect: 'HP_BOOST', value: 50, text: "+50 HP (Básicos)", condition: "BASIC_ONLY" },
     "Hero's Cape (Ace)": { name: "Hero's Cape (Ace)", type: 'TOOL', effect: 'HP_BOOST', value: 100, text: "+100 HP", condition: "NONE" },
@@ -234,7 +241,7 @@ function gameReducer(state: GameState, action: any): GameState {
       } else {
           if (state.phase === 'BETWEEN_TURNS') {
                ['P1', 'P2'].forEach((pid) => {
-                    const p = newState.players[pid as PlayerId];
+                    const p = newState.players[pid as PlayerId]; // CORREÇÃO AQUI
                     if (p.active) {
                         // VENENO
                         if (p.active.condition === 'POISONED') { 
@@ -425,7 +432,7 @@ function gameReducer(state: GameState, action: any): GameState {
         if (promotionPid) {
             const p = { ...newState.players[promotionPid] };
             p.active = p.bench[action.benchIndex];
-            p.bench = p.bench.filter((_, i) => i !== action.benchIndex);
+            p.bench = p.bench.filter((_: any, i: number) => i !== action.benchIndex); // CORREÇÃO AQUI
             p.mustPromote = false;
             newState.players[promotionPid] = p;
             logEntry = createLog(`${p.name} promoveu ${p.active!.name}.`, 'INFO');
@@ -1026,7 +1033,10 @@ export default function App() {
   const [showDiscardModal, setShowDiscardModal] = useState(false);
   const [damagePool, setDamagePool] = useState(0);
   const [coinResult, setCoinResult] = useState<'CARA' | 'COROA' | null>(null);
-  const [attackConfirm, setAttackConfirm] = useState<{attack: any, attacker: any, defender: any} | null>(null);
+  
+  // FIX: Estado tipado para evitar erro TS18047 e TS2339
+  const [attackConfirm, setAttackConfirm] = useState<AttackConfirmState | null>(null);
+  
   const scrollRef = useRef<HTMLDivElement>(null);
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
 
@@ -1034,13 +1044,11 @@ export default function App() {
   const promotingPlayer = state.players.P1.mustPromote ? state.players.P1 : (state.players.P2.mustPromote ? state.players.P2 : null);
   const opponentId = state.currentPlayer === 'P1' ? 'P2' : 'P1';
 
-  // --- LÓGICA DE HISTÓRICO ADICIONADA ---
   useEffect(() => {
       if (state.winner) {
           const winnerDeck = state.players[state.winner].deckTheme;
           const winnerName = state.players[state.winner].name;
           if (winnerDeck) {
-              // 1. Atualiza Ranking
               const savedDecks = localStorage.getItem('judgeTech_ranking');
               let deckStats: DeckStat[] = savedDecks ? JSON.parse(savedDecks) : [];
               const dIdx = deckStats.findIndex(s => s.deckId === winnerDeck.id);
@@ -1053,7 +1061,6 @@ export default function App() {
               if (pIdx >= 0) { playerStats[pIdx].wins += 1; playerStats[pIdx].matches += 1; } else { playerStats.push({ playerName: winnerName, wins: 1, matches: 1 }); }
               localStorage.setItem('judgeTech_player_ranking', JSON.stringify(playerStats));
 
-              // 2. SALVA O HISTÓRICO DA PARTIDA
               const matchRecord: MatchHistoryRecord = {
                   id: state.matchId,
                   date: new Date().toLocaleString(),
@@ -1066,7 +1073,7 @@ export default function App() {
               };
               const existingHistory = localStorage.getItem('judgeTech_match_history');
               const historyList: MatchHistoryRecord[] = existingHistory ? JSON.parse(existingHistory) : [];
-              historyList.unshift(matchRecord); // Adiciona no topo
+              historyList.unshift(matchRecord); 
               localStorage.setItem('judgeTech_match_history', JSON.stringify(historyList));
           }
       }
@@ -1085,14 +1092,18 @@ export default function App() {
       
       const prizesDiff = state.players[opponentId].prizesLeft - state.players[state.currentPlayer].prizesLeft;
       
-      setAttackConfirm({ attack: atk, attacker, defender, prizesDiff }); // ATK vs ATTACK corrigido
+      // FIX: Atribuindo ao estado tipado corretamente
+      setAttackConfirm({ attack: atk, attacker, defender, prizesDiff });
       setDetailsTarget(null);
   };
 
   const confirmAttackAction = (amount: number) => {
-      dispatch({ type: 'ADD_DAMAGE', amount, target: 'active', playerId: opponentId, attackName: attackConfirm.attack.name }); // ATK vs ATTACK corrigido
-      if (attackConfirm?.attack.name === "Mergulho Fantasma") { setDamagePool(60); setInteractionMode('DISTRIBUTE_DAMAGE'); }
-      else { dispatch({ type: 'NEXT_PHASE' }); }
+      // FIX: Verificação de nulidade com ?
+      if (attackConfirm) {
+          dispatch({ type: 'ADD_DAMAGE', amount, target: 'active', playerId: opponentId, attackName: attackConfirm.attack.name });
+          if (attackConfirm.attack.name === "Mergulho Fantasma") { setDamagePool(60); setInteractionMode('DISTRIBUTE_DAMAGE'); }
+          else { dispatch({ type: 'NEXT_PHASE' }); }
+      }
       setAttackConfirm(null);
   };
 
@@ -1147,10 +1158,11 @@ export default function App() {
           </div>
           
           <div className="absolute bottom-0 left-0 right-0 p-4 bg-[#11141b] border-t border-slate-800 grid grid-cols-2 gap-2">
+            <button onClick={() => { dispatch({ type: 'PLAY_SUPPORTER' }); playSound('click'); }} className="bg-purple-900/50 border border-purple-500/30 py-2 rounded text-[10px] font-bold col-span-2 text-purple-200 hover:bg-purple-900/80">Jogar Apoiador</button>
             <button onClick={() => setShowRanking(true)} className="bg-slate-800 py-2 rounded text-xs font-bold">Ranking</button>
             <button onClick={() => setShowHistory(true)} className="bg-slate-800 py-2 rounded text-xs font-bold">Histórico</button>
             <button onClick={() => setShowAI(true)} className="bg-indigo-900/50 py-2 rounded text-xs font-bold">Juiz IA</button>
-            <button onClick={handleExportTxt} className="bg-slate-800 py-2 rounded text-xs font-bold">Exportar</button>
+            <button onClick={handleExportTxt} className="bg-slate-800 py-2 rounded text-xs font-bold col-span-2">Exportar Log</button>
         </div>
       </aside>
 
