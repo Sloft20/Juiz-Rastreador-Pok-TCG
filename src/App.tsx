@@ -1,13 +1,15 @@
 import React, { useState, useReducer, useEffect, useRef } from 'react';
 import { 
-  AlertTriangle, Zap, Search, History, 
+  AlertTriangle, Zap, History, 
   XCircle, RotateCcw, Swords, FileText, ChevronRight, Gavel,
-  Layers, MousePointerClick, Check, ShieldAlert,
-  Flame, Droplets, Leaf, Eye, Moon, Star, Hexagon, Component, Heart, Scale,
-  HeartPulse, Sparkles, MessageSquare, Bot, ArrowUpCircle, Info, ScanLine, Edit3, X,
+  Layers, Check,
+  Flame, Droplets, Leaf, Eye, Moon, Star, Hexagon, Component, Heart,
+  Sparkles, ArrowUpCircle, X,
   Plus, Minus, RefreshCw, PanelLeftClose, PanelLeft, UserCheck, Trophy, RotateCcw as RestartIcon, Trash2,
   Lightbulb, Send, Target, BarChart3, User, BookOpen, PlayCircle, Download, Coins, Skull, Briefcase, Menu
 } from 'lucide-react';
+// Se você configurou o Supabase, descomente a linha abaixo. Caso contrário, o Ranking será local.
+// import { supabase } from './supabaseClient';
 
 // --- SISTEMA DE ÁUDIO ---
 const playSound = (type: 'attack' | 'damage' | 'energy' | 'click' | 'knockout' | 'coin', customVolume = 0.4, speed = 1.0) => {
@@ -82,6 +84,17 @@ interface GameState {
 interface DeckStat { deckId: string; deckName: string; wins: number; matches: number; }
 interface PlayerStat { playerName: string; wins: number; matches: number; }
 
+interface MatchHistoryRecord {
+    id: string;
+    date: string;
+    p1Name: string;
+    p1Deck: string;
+    p2Name: string;
+    p2Deck: string;
+    winner: string;
+    events: GameEvent[];
+}
+
 // --- DADOS ---
 const ENERGY_CONFIG: Record<EnergyType, { color: string, bg: string, icon: React.ElementType, label: string }> = {
   GRASS: { color: 'text-green-600', bg: 'bg-green-600', icon: Leaf, label: 'Grama' },
@@ -97,7 +110,6 @@ const ENERGY_CONFIG: Record<EnergyType, { color: string, bg: string, icon: React
   COLORLESS: { color: 'text-slate-500', bg: 'bg-slate-200', icon: Star, label: 'Incolor' },
 };
 
-// --- FERRAMENTAS ---
 const TOOLS_DATABASE: Record<string, Tool> = {
     "Cinto da Bravura": { name: "Cinto da Bravura", type: 'TOOL', effect: 'HP_BOOST', value: 50, text: "+50 HP (Básicos)", condition: "BASIC_ONLY" },
     "Hero's Cape (Ace)": { name: "Hero's Cape (Ace)", type: 'TOOL', effect: 'HP_BOOST', value: 100, text: "+100 HP", condition: "NONE" },
@@ -770,7 +782,7 @@ const TimelineItem = ({ evt }: any) => (
 );
 
 const CardDetailsModal = ({ pokemon, deckTheme, onClose, onUseAttack, onSetCondition, onAddDamage, onEvolve, onUseAbility }: any) => {
-  const typeConfig = ENERGY_CONFIG[pokemon.type] || ENERGY_CONFIG.COLORLESS;
+  const typeConfig = ENERGY_CONFIG[pokemon.type as EnergyType] || ENERGY_CONFIG.COLORLESS;
   const [extraDamage, setExtraDamage] = useState(0);
 
   return (
@@ -873,7 +885,7 @@ const CardSlot = ({ pokemon, theme, isOpponent, isActive, interactionMode, onInt
   if (!pokemon && isActive) return ( <div onClick={() => { onInteract(); playSound('click'); }} className={`relative rounded-md flex flex-col items-center justify-center border-2 border-dashed border-slate-600 bg-slate-900/50 text-slate-500 ${widthClass} ${heightClass} ${interactionMode === 'PROMOTE' ? 'cursor-pointer animate-pulse border-yellow-400 text-yellow-400' : ''}`}><div className="text-[10px] font-bold text-center p-2">CAMPO ATIVO VAZIO</div></div> );
   if (!pokemon) return ( <button onClick={() => { onOpenSelector(); playSound('click'); }} disabled={isOpponent} className={`${widthClass} ${heightClass} border border-dashed border-slate-700 rounded-md bg-slate-900/30 flex items-center justify-center hover:bg-slate-800/50 text-slate-700 text-2xl md:text-4xl`}>+</button> );
 
-  const typeConfig = ENERGY_CONFIG[pokemon.type] || ENERGY_CONFIG.COLORLESS;
+  const typeConfig = ENERGY_CONFIG[pokemon.type as EnergyType] || ENERGY_CONFIG.COLORLESS;
   const hpLeft = Math.max(0, pokemon.maxHP - pokemon.damage);
   
   let interactionOverlay = null;
@@ -1002,76 +1014,6 @@ const EnergySelector = ({ onSelect, onCancel, count }: any) => (
     </div>
 );
 
-// --- NOVO MODAL DE HISTÓRICO ---
-interface MatchHistoryRecord {
-    id: string;
-    date: string;
-    p1Name: string;
-    p1Deck: string;
-    p2Name: string;
-    p2Deck: string;
-    winner: string;
-    events: GameEvent[];
-}
-
-const HistoryModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
-    const [history, setHistory] = useState<MatchHistoryRecord[]>([]);
-    const [selectedMatch, setSelectedMatch] = useState<MatchHistoryRecord | null>(null);
-
-    useEffect(() => {
-        if (isOpen) {
-            const saved = localStorage.getItem('judgeTech_match_history');
-            if (saved) setHistory(JSON.parse(saved));
-        }
-    }, [isOpen]);
-
-    if (!isOpen) return null;
-
-    return (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
-            <div className="bg-slate-900 border border-slate-700 p-6 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[80vh] flex flex-col">
-                <div className="flex justify-between items-center mb-6 border-b border-slate-700 pb-4">
-                    <h3 className="text-2xl font-bold text-white flex items-center gap-2"><History className="text-blue-400" /> Histórico de Partidas</h3>
-                    <button onClick={onClose}><XCircle className="text-slate-500 hover:text-white" /></button>
-                </div>
-                
-                <div className="flex gap-4 flex-1 overflow-hidden">
-                    {/* Lista de Partidas */}
-                    <div className={`${selectedMatch ? 'w-1/3 hidden md:block' : 'w-full'} overflow-y-auto custom-scrollbar space-y-3`}>
-                        {history.length === 0 ? <p className="text-slate-500 text-center">Nenhuma partida salva.</p> : 
-                            history.map((match) => (
-                                <div key={match.id} onClick={() => setSelectedMatch(match)} className={`p-4 rounded-xl border cursor-pointer transition-all ${selectedMatch?.id === match.id ? 'bg-slate-800 border-blue-500' : 'bg-slate-900 border-slate-700 hover:bg-slate-800'}`}>
-                                    <div className="flex justify-between text-xs text-slate-500 mb-2"><span>{match.date}</span></div>
-                                    <div className="flex justify-between items-center">
-                                        <div className="text-sm font-bold text-white">{match.winner} venceu!</div>
-                                        <ChevronRight size={16} className="text-slate-500"/>
-                                    </div>
-                                    <div className="mt-2 text-xs text-slate-400">
-                                        {match.p1Name} ({match.p1Deck}) vs {match.p2Name} ({match.p2Deck})
-                                    </div>
-                                </div>
-                            ))
-                        }
-                    </div>
-
-                    {/* Detalhes do Log */}
-                    {selectedMatch && (
-                        <div className="flex-1 bg-slate-950 rounded-xl border border-slate-800 p-4 flex flex-col">
-                            <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-800">
-                                <h4 className="font-bold text-white">Log da Partida</h4>
-                                <button onClick={() => setSelectedMatch(null)} className="md:hidden text-slate-400">Voltar</button>
-                            </div>
-                            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-1">
-                                {selectedMatch.events.map((evt) => <TimelineItem key={evt.id} evt={evt} />)}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
-
 export default function App() {
   const [state, dispatch] = useReducer(gameReducer, getInitialState());
   const [showAI, setShowAI] = useState(false);
@@ -1143,13 +1085,13 @@ export default function App() {
       
       const prizesDiff = state.players[opponentId].prizesLeft - state.players[state.currentPlayer].prizesLeft;
       
-      setAttackConfirm({ atk, attacker, defender, prizesDiff });
+      setAttackConfirm({ attack: atk, attacker, defender, prizesDiff }); // ATK vs ATTACK corrigido
       setDetailsTarget(null);
   };
 
   const confirmAttackAction = (amount: number) => {
-      dispatch({ type: 'ADD_DAMAGE', amount, target: 'active', playerId: opponentId, attackName: attackConfirm.atk.name });
-      if (attackConfirm?.atk.name === "Mergulho Fantasma") { setDamagePool(60); setInteractionMode('DISTRIBUTE_DAMAGE'); }
+      dispatch({ type: 'ADD_DAMAGE', amount, target: 'active', playerId: opponentId, attackName: attackConfirm.attack.name }); // ATK vs ATTACK corrigido
+      if (attackConfirm?.attack.name === "Mergulho Fantasma") { setDamagePool(60); setInteractionMode('DISTRIBUTE_DAMAGE'); }
       else { dispatch({ type: 'NEXT_PHASE' }); }
       setAttackConfirm(null);
   };
@@ -1174,8 +1116,8 @@ export default function App() {
     playSound('click');
   };
 
-  const handleSetCondition = (cond: SpecialCondition) => { if(!detailsTarget) return; dispatch({ type: 'SET_CONDITION', condition: cond, target: detailsTarget.target, index: detailsTarget.index, playerId: detailsTarget.pid }); };
-  const handleAddDamageFromModal = (amount: number) => { if(!detailsTarget) return; dispatch({ type: 'ADD_DAMAGE', amount: amount, target: detailsTarget.target, index: detailsTarget.index, playerId: detailsTarget.pid }); };
+  const handleSetCondition = (cond: SpecialCondition) => { if(!detailsTarget) return; dispatch({ type: 'SET_CONDITION', condition: cond, target: detailsTarget.target, index: detailsTarget.index, playerId: detailsTarget.playerId }); };
+  const handleAddDamageFromModal = (amount: number) => { if(!detailsTarget) return; dispatch({ type: 'ADD_DAMAGE', amount: amount, target: detailsTarget.target, index: detailsTarget.index, playerId: detailsTarget.playerId }); };
   const handleUpdatePokemon = (newName: string) => { if (!selectorTarget) return; dispatch({ type: 'UPDATE_POKEMON', target: selectorTarget.target, index: selectorTarget.index, newName }); setSelectorTarget(null); };
 
   const handleCoinFlip = () => {
@@ -1229,7 +1171,7 @@ export default function App() {
         {state.phase === 'SETUP' && <SetupModal players={state.players} onSelectDeck={(pid:any, did:any) => dispatch({ type: 'SET_DECK', playerId: pid, deckId: did })} onSetActive={(pid:any, name:any) => dispatch({ type: 'SET_ACTIVE', playerId: pid, pokemonName: name })} onConfirm={() => dispatch({type: 'NEXT_PHASE'})} onNameChange={(pid:any, name:any) => dispatch({ type: 'SET_PLAYER_NAME', playerId: pid, name })} />}
         
         {/* MODAIS */}
-        {attackConfirm && <DamageConfirmModal attack={attackConfirm.atk} attacker={attackConfirm.attacker} defender={attackConfirm.defender} prizesDiff={attackConfirm.prizesDiff} onConfirm={confirmAttackAction} onCancel={() => setAttackConfirm(null)} />}
+        {attackConfirm && <DamageConfirmModal attack={attackConfirm.attack} attacker={attackConfirm.attacker} defender={attackConfirm.defender} prizesDiff={attackConfirm.prizesDiff} onConfirm={confirmAttackAction} onCancel={() => setAttackConfirm(null)} />}
         {pendingEnergyTarget && <EnergySelector count={(pendingEnergyTarget.target === 'active' ? state.players[state.currentPlayer].active?.energies.length : state.players[state.currentPlayer].bench[pendingEnergyTarget.index!]?.energies.length) || 0} onSelect={(t: EnergyType) => dispatch({type: 'ATTACH_ENERGY', target: pendingEnergyTarget.target, index: pendingEnergyTarget.index, energyType: t})} onCancel={() => { setPendingEnergyTarget(null); setInteractionMode('NONE'); playSound('click'); }} />}
         {selectorTarget && <CardSelectionModal deckTheme={activePlayer.deckTheme} onSelect={handleUpdatePokemon} onClose={() => setSelectorTarget(null)} />}
         {detailsTarget && <CardDetailsModal pokemon={detailsTarget.target === 'active' ? state.players[detailsTarget.playerId!].active : state.players[detailsTarget.playerId!].bench[detailsTarget.index!]} onClose={() => setDetailsTarget(null)} onUseAbility={(name:any) => { dispatch({type: 'USE_ABILITY', abilityName: name, pokemonName: detailsTarget.target === 'active' ? state.players[detailsTarget.playerId!].active?.name : state.players[detailsTarget.playerId!].bench[detailsTarget.index!].name }); playSound('energy'); }} onUseAttack={handleUseAttack} onSetCondition={handleSetCondition} onAddDamage={handleAddDamageFromModal} onEvolve={(name:string) => { dispatch({type: 'EVOLVE_POKEMON', target: detailsTarget.target, index: detailsTarget.index, evolutionName: name}); setDetailsTarget(null); }} />}
