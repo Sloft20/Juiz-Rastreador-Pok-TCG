@@ -1,3 +1,4 @@
+import { supabase } from './supabaseClient'; // Certifique-se que o caminho está certo
 import React, { useState, useReducer, useEffect, useRef } from 'react';
 import { 
   AlertTriangle, Zap, Search, History, 
@@ -661,54 +662,81 @@ const WinnerModal = ({ winnerName, onRestart }: { winnerName: string, onRestart:
 );
 
 const RankingModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
-    const [deckStats, setDeckStats] = useState<DeckStat[]>([]);
-    const [playerStats, setPlayerStats] = useState<PlayerStat[]>([]);
+    const [stats, setStats] = useState<any[]>([]);
     const [activeTab, setActiveTab] = useState<'decks' | 'players'>('decks');
+
+    // Busca dados iniciais
+    const fetchRanking = async () => {
+        const { data } = await supabase.from('ranking').select('*');
+        if (data) setStats(data);
+    };
+
     useEffect(() => {
         if (isOpen) {
-            const savedDecks = localStorage.getItem('judgeTech_ranking');
-            const savedPlayers = localStorage.getItem('judgeTech_player_ranking');
-            if (savedDecks) setDeckStats(JSON.parse(savedDecks));
-            else setDeckStats([{ deckId: 'charizard-ex', deckName: 'Charizard ex', wins: 0, matches: 0 }, { deckId: 'gardevoir-ex', deckName: 'Gardevoir ex', wins: 0, matches: 0 }, { deckId: 'dragapult-ex', deckName: 'Dragapult ex', wins: 0, matches: 0 }]);
-            if (savedPlayers) setPlayerStats(JSON.parse(savedPlayers));
+            fetchRanking();
+
+            // INSCRIÇÃO EM TEMPO REAL (Magia do Supabase)
+            const channel = supabase
+                .channel('ranking_updates')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'ranking' }, (payload) => {
+                    fetchRanking(); // Recarrega se alguém ganhar uma partida em outro lugar
+                })
+                .subscribe();
+
+            return () => { supabase.removeChannel(channel); };
         }
     }, [isOpen]);
+
+    // Processa os dados brutos para separar por Deck ou Player
+    const getProcessedStats = () => {
+        if (activeTab === 'decks') {
+            // Agrupa por nome do deck
+            const deckMap: Record<string, { wins: number, matches: number }> = {};
+            stats.forEach(row => {
+                if (!deckMap[row.deck_name]) deckMap[row.deck_name] = { wins: 0, matches: 0 };
+                deckMap[row.deck_name].wins += row.wins;
+                deckMap[row.deck_name].matches += row.matches;
+            });
+            return Object.entries(deckMap).map(([name, val]) => ({ name, ...val }));
+        } else {
+            // Agrupa por nome do jogador
+            const playerMap: Record<string, { wins: number, matches: number }> = {};
+            stats.forEach(row => {
+                if (!playerMap[row.player_name]) playerMap[row.player_name] = { wins: 0, matches: 0 };
+                playerMap[row.player_name].wins += row.wins;
+                playerMap[row.player_name].matches += row.matches;
+            });
+            return Object.entries(playerMap).map(([name, val]) => ({ name, ...val }));
+        }
+    };
+
+    const displayData = getProcessedStats().sort((a, b) => (b.wins / (b.matches || 1)) - (a.wins / (a.matches || 1)));
+
     if (!isOpen) return null;
+
     return (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
             <div className="bg-slate-900 border border-yellow-500/50 p-6 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] flex flex-col">
                 <div className="flex justify-between items-center mb-6 border-b border-slate-700 pb-4">
-                    <h3 className="text-2xl font-bold text-white flex items-center gap-2"><Trophy className="text-yellow-400" /> Ranking Global</h3>
+                    <h3 className="text-2xl font-bold text-white flex items-center gap-2"><Trophy className="text-yellow-400" /> Ranking Global (Online)</h3>
                     <button onClick={onClose}><XCircle className="text-slate-500 hover:text-white" /></button>
                 </div>
                 <div className="flex gap-2 mb-4">
                     <button onClick={() => setActiveTab('decks')} className={`px-4 py-2 rounded-lg font-bold transition-colors ${activeTab === 'decks' ? 'bg-yellow-500 text-black' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>Decks</button>
                     <button onClick={() => setActiveTab('players')} className={`px-4 py-2 rounded-lg font-bold transition-colors ${activeTab === 'players' ? 'bg-blue-500 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>Jogadores</button>
                 </div>
-                <div className="overflow-hidden rounded-lg border border-slate-700">
+                <div className="overflow-hidden rounded-lg border border-slate-700 overflow-y-auto custom-scrollbar">
                     <table className="w-full text-left text-sm text-slate-300">
-                        <thead className="bg-slate-800 text-xs uppercase text-slate-400 font-bold"><tr><th className="px-4 py-3">{activeTab === 'decks' ? 'Deck' : 'Jogador'}</th><th className="px-4 py-3 text-center">Partidas</th><th className="px-4 py-3 text-center">Vitórias</th><th className="px-4 py-3 text-right">Winrate</th></tr></thead>
+                        <thead className="bg-slate-800 text-xs uppercase text-slate-400 font-bold"><tr><th className="px-4 py-3">Nome</th><th className="px-4 py-3 text-center">Partidas</th><th className="px-4 py-3 text-center">Vitórias</th><th className="px-4 py-3 text-right">Winrate</th></tr></thead>
                         <tbody className="divide-y divide-slate-700">
-                            {activeTab === 'decks' ? (
-                                deckStats.sort((a,b) => (b.wins/(b.matches||1)) - (a.wins/(a.matches||1))).map((stat) => (
-                                    <tr key={stat.deckId} className="hover:bg-slate-800/50 transition-colors">
-                                        <td className="px-4 py-3 font-bold text-white">{stat.deckName}</td>
-                                        <td className="px-4 py-3 text-center">{stat.matches}</td>
-                                        <td className="px-4 py-3 text-center text-green-400">{stat.wins}</td>
-                                        <td className="px-4 py-3 text-right font-mono font-bold text-yellow-500">{stat.matches > 0 ? ((stat.wins / stat.matches) * 100).toFixed(1) : 0}%</td>
-                                    </tr>
-                                ))
-                            ) : (
-                                playerStats.length === 0 ? <tr><td colSpan={4} className="p-4 text-center text-slate-500">Sem dados de jogadores ainda.</td></tr> :
-                                playerStats.sort((a,b) => (b.wins/(b.matches||1)) - (a.wins/(a.matches||1))).map((stat, idx) => (
-                                    <tr key={idx} className="hover:bg-slate-800/50 transition-colors">
-                                        <td className="px-4 py-3 font-bold text-white flex items-center gap-2"><User size={14}/> {stat.playerName}</td>
-                                        <td className="px-4 py-3 text-center">{stat.matches}</td>
-                                        <td className="px-4 py-3 text-center text-green-400">{stat.wins}</td>
-                                        <td className="px-4 py-3 text-right font-mono font-bold text-blue-400">{stat.matches > 0 ? ((stat.wins / stat.matches) * 100).toFixed(1) : 0}%</td>
-                                    </tr>
-                                ))
-                            )}
+                            {displayData.map((stat) => (
+                                <tr key={stat.name} className="hover:bg-slate-800/50 transition-colors">
+                                    <td className="px-4 py-3 font-bold text-white">{stat.name}</td>
+                                    <td className="px-4 py-3 text-center">{stat.matches}</td>
+                                    <td className="px-4 py-3 text-center text-green-400">{stat.wins}</td>
+                                    <td className="px-4 py-3 text-right font-mono font-bold text-yellow-500">{stat.matches > 0 ? ((stat.wins / stat.matches) * 100).toFixed(1) : 0}%</td>
+                                </tr>
+                            ))}
                         </tbody>
                     </table>
                 </div>
@@ -1036,25 +1064,23 @@ export default function App() {
   const opponentId = state.currentPlayer === 'P1' ? 'P2' : 'P1';
 
   // --- LÓGICA DE HISTÓRICO ADICIONADA ---
+  // --- LÓGICA DE HISTÓRICO E RANKING (SUPABASE) ---
   useEffect(() => {
       if (state.winner) {
           const winnerDeck = state.players[state.winner].deckTheme;
           const winnerName = state.players[state.winner].name;
+
           if (winnerDeck) {
-              // 1. Atualiza Ranking
-              const savedDecks = localStorage.getItem('judgeTech_ranking');
-              let deckStats: DeckStat[] = savedDecks ? JSON.parse(savedDecks) : [];
-              const dIdx = deckStats.findIndex(s => s.deckId === winnerDeck.id);
-              if (dIdx >= 0) { deckStats[dIdx].wins += 1; deckStats[dIdx].matches += 1; } else { deckStats.push({ deckId: winnerDeck.id, deckName: winnerDeck.name, wins: 1, matches: 1 }); }
-              localStorage.setItem('judgeTech_ranking', JSON.stringify(deckStats));
+              // 1. Atualiza Ranking Global no Supabase (usando a função segura do SQL)
+              supabase.rpc('register_win', { 
+                  p_deck: winnerDeck.name, 
+                  p_player: winnerName 
+              }).then(({ error }) => {
+                  if (error) console.error("Erro ao salvar ranking:", error);
+              });
 
-              const savedPlayers = localStorage.getItem('judgeTech_player_ranking');
-              let playerStats: PlayerStat[] = savedPlayers ? JSON.parse(savedPlayers) : [];
-              const pIdx = playerStats.findIndex(p => p.playerName === winnerName);
-              if (pIdx >= 0) { playerStats[pIdx].wins += 1; playerStats[pIdx].matches += 1; } else { playerStats.push({ playerName: winnerName, wins: 1, matches: 1 }); }
-              localStorage.setItem('judgeTech_player_ranking', JSON.stringify(playerStats));
-
-              // 2. SALVA O HISTÓRICO DA PARTIDA
+              // 2. O Histórico de Partidas detalhado pode continuar local ou ir para outra tabela
+              // Por simplicidade, mantive o histórico de logs local, mas o ranking agora é Global.
               const matchRecord: MatchHistoryRecord = {
                   id: state.matchId,
                   date: new Date().toLocaleString(),
@@ -1067,7 +1093,7 @@ export default function App() {
               };
               const existingHistory = localStorage.getItem('judgeTech_match_history');
               const historyList: MatchHistoryRecord[] = existingHistory ? JSON.parse(existingHistory) : [];
-              historyList.unshift(matchRecord); // Adiciona no topo
+              historyList.unshift(matchRecord); 
               localStorage.setItem('judgeTech_match_history', JSON.stringify(historyList));
           }
       }
