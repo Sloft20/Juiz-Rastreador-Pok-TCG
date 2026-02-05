@@ -8,6 +8,8 @@ import {
   Plus, Minus, RefreshCw, PanelLeftClose, PanelLeft, UserCheck, Trophy, RotateCcw as RestartIcon, Trash2,
   Lightbulb, Send, Target, BarChart3, User, BookOpen, PlayCircle, Download, Coins, Skull, Briefcase, Menu
 } from 'lucide-react';
+// Se você configurou o Supabase, descomente a linha abaixo. Caso contrário, o Ranking será local.
+// import { supabase } from './supabaseClient';
 
 // --- SISTEMA DE ÁUDIO ---
 const playSound = (type: 'attack' | 'damage' | 'energy' | 'click' | 'knockout' | 'coin', customVolume = 0.4, speed = 1.0) => {
@@ -240,8 +242,9 @@ function gameReducer(state: GameState, action: any): GameState {
           logEntry = createLog("Fim da Preparação. Partida Iniciada!", 'INFO');
       } else {
           if (state.phase === 'BETWEEN_TURNS') {
-               ['P1', 'P2'].forEach((pid) => {
-                    const p = newState.players[pid as PlayerId]; // CORREÇÃO AQUI
+               // FIX: Usando array tipado para o forEach não reclamar de 'any'
+               (['P1', 'P2'] as PlayerId[]).forEach((pid) => {
+                    const p = newState.players[pid];
                     if (p.active) {
                         // VENENO
                         if (p.active.condition === 'POISONED') { 
@@ -432,7 +435,7 @@ function gameReducer(state: GameState, action: any): GameState {
         if (promotionPid) {
             const p = { ...newState.players[promotionPid] };
             p.active = p.bench[action.benchIndex];
-            p.bench = p.bench.filter((_: any, i: number) => i !== action.benchIndex); // CORREÇÃO AQUI
+            p.bench = p.bench.filter((_: any, i: number) => i !== action.benchIndex);
             p.mustPromote = false;
             newState.players[promotionPid] = p;
             logEntry = createLog(`${p.name} promoveu ${p.active!.name}.`, 'INFO');
@@ -1044,11 +1047,13 @@ export default function App() {
   const promotingPlayer = state.players.P1.mustPromote ? state.players.P1 : (state.players.P2.mustPromote ? state.players.P2 : null);
   const opponentId = state.currentPlayer === 'P1' ? 'P2' : 'P1';
 
+  // --- LÓGICA DE HISTÓRICO ADICIONADA ---
   useEffect(() => {
       if (state.winner) {
           const winnerDeck = state.players[state.winner].deckTheme;
           const winnerName = state.players[state.winner].name;
           if (winnerDeck) {
+              // 1. Atualiza Ranking
               const savedDecks = localStorage.getItem('judgeTech_ranking');
               let deckStats: DeckStat[] = savedDecks ? JSON.parse(savedDecks) : [];
               const dIdx = deckStats.findIndex(s => s.deckId === winnerDeck.id);
@@ -1061,6 +1066,7 @@ export default function App() {
               if (pIdx >= 0) { playerStats[pIdx].wins += 1; playerStats[pIdx].matches += 1; } else { playerStats.push({ playerName: winnerName, wins: 1, matches: 1 }); }
               localStorage.setItem('judgeTech_player_ranking', JSON.stringify(playerStats));
 
+              // 2. SALVA O HISTÓRICO DA PARTIDA
               const matchRecord: MatchHistoryRecord = {
                   id: state.matchId,
                   date: new Date().toLocaleString(),
@@ -1073,7 +1079,7 @@ export default function App() {
               };
               const existingHistory = localStorage.getItem('judgeTech_match_history');
               const historyList: MatchHistoryRecord[] = existingHistory ? JSON.parse(existingHistory) : [];
-              historyList.unshift(matchRecord); 
+              historyList.unshift(matchRecord); // Adiciona no topo
               localStorage.setItem('judgeTech_match_history', JSON.stringify(historyList));
           }
       }
@@ -1127,8 +1133,8 @@ export default function App() {
     playSound('click');
   };
 
-  const handleSetCondition = (cond: SpecialCondition) => { if(!detailsTarget) return; dispatch({ type: 'SET_CONDITION', condition: cond, target: detailsTarget.target, index: detailsTarget.index, playerId: detailsTarget.playerId }); };
-  const handleAddDamageFromModal = (amount: number) => { if(!detailsTarget) return; dispatch({ type: 'ADD_DAMAGE', amount: amount, target: detailsTarget.target, index: detailsTarget.index, playerId: detailsTarget.playerId }); };
+  const handleSetCondition = (cond: SpecialCondition) => { if(!detailsTarget) return; dispatch({ type: 'SET_CONDITION', condition: cond, target: detailsTarget.target, index: detailsTarget.index, playerId: detailsTarget.pid }); };
+  const handleAddDamageFromModal = (amount: number) => { if(!detailsTarget) return; dispatch({ type: 'ADD_DAMAGE', amount: amount, target: detailsTarget.target, index: detailsTarget.index, playerId: detailsTarget.pid }); };
   const handleUpdatePokemon = (newName: string) => { if (!selectorTarget) return; dispatch({ type: 'UPDATE_POKEMON', target: selectorTarget.target, index: selectorTarget.index, newName }); setSelectorTarget(null); };
 
   const handleCoinFlip = () => {
@@ -1162,7 +1168,7 @@ export default function App() {
             <button onClick={() => setShowRanking(true)} className="bg-slate-800 py-2 rounded text-xs font-bold">Ranking</button>
             <button onClick={() => setShowHistory(true)} className="bg-slate-800 py-2 rounded text-xs font-bold">Histórico</button>
             <button onClick={() => setShowAI(true)} className="bg-indigo-900/50 py-2 rounded text-xs font-bold">Juiz IA</button>
-            <button onClick={handleExportTxt} className="bg-slate-800 py-2 rounded text-xs font-bold col-span-2">Exportar Log</button>
+            <button onClick={handleExportTxt} className="bg-slate-800 py-2 rounded text-xs font-bold">Exportar</button>
         </div>
       </aside>
 
